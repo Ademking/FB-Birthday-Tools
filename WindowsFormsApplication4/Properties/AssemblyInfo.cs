@@ -5,13 +5,13 @@ using System.Runtime.InteropServices;
 // General Information about an assembly is controlled through the following 
 // set of attributes. Change these attribute values to modify the information
 // associated with an assembly.
-[assembly: AssemblyTitle("WindowsFormsApplication4")]
-[assembly: AssemblyDescription("")]
+[assembly: AssemblyTitle("FB Birthday Tools v1.0.0")]
+[assembly: AssemblyDescription("Send Automatic Birthday Wishes For Your Facebook Friends Every Single Day")]
 [assembly: AssemblyConfiguration("")]
-[assembly: AssemblyCompany("")]
-[assembly: AssemblyProduct("WindowsFormsApplication4")]
+[assembly: AssemblyCompany("AdemKouki")]
+[assembly: AssemblyProduct("FB Birthday Tools v1.0.0")]
 [assembly: AssemblyCopyright("Copyright ©  2018")]
-[assembly: AssemblyTrademark("")]
+[assembly: AssemblyTrademark("AdemKouki")]
 [assembly: AssemblyCulture("")]
 
 // Setting ComVisible to false makes the types in this assembly not visible 

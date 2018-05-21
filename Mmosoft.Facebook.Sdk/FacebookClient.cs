@@ -13,15 +13,30 @@ using HtmlAgilityPack;
 using Mmosoft.Facebook.Sdk.Exceptions;
 using Mmosoft.Facebook.Sdk.Models;
 using Mmosoft.Facebook.Sdk.Utilities;
+using System.IO;
+using System.Collections;
+using System.Reflection;
+using System.Windows.Forms;
+using System.Text.RegularExpressions;
+using System.ComponentModel;
+using Caesium;
+using System.Threading.Tasks;
 
 namespace Mmosoft.Facebook.Sdk
 {
     public class FacebookClient : IDisposable
     {
+
+        //friend list from ics cal
+        public ArrayList myfriends;
+
+        //Cookies
+        public CookieCollection cooki;
+
         // For logging
-        ILogger _logger;
+        public ILogger _logger { get; set; }
         // for create http request
-        HttpHandler _http;
+        public HttpHandler _http { get; set; }
 
         /// <summary>
         /// Facebook email
@@ -31,7 +46,7 @@ namespace Mmosoft.Facebook.Sdk
         /// Facebook password
         /// </summary>        
         public string Password { get; set; }
-
+        public string logedd_user_id { get; set; }
         /// <summary>
         /// Create new instance of Facebook client class
         /// </summary>
@@ -70,9 +85,10 @@ namespace Mmosoft.Facebook.Sdk
             // create content payload
             string credential = string.Format("email={0}&pass={1}", Username, Password);
             string payload = HtmlHelper.BuildPayload(inputs, additionKeyValuePair: credential);
-
+            
             using (HttpWebResponse response = _http.SendPostRequest("https://m.facebook.com/login.php", payload))
             {
+                cooki = response.Cookies;
                 if (response.Cookies["c_user"] == null)
                     throw new UnAuthorizedException(FacebookClientErrors.CookieKeyCUserNotFound);
             }
@@ -144,6 +160,7 @@ namespace Mmosoft.Facebook.Sdk
 
                     foreach (HtmlNode input in formNode.SelectNodes("//input"))
                     {
+                        
                         string inputName = null;
                         if ((input == null) ||
                             (inputName = input.GetAttributeValue("name", null)) == null ||
@@ -203,7 +220,7 @@ namespace Mmosoft.Facebook.Sdk
         /// <param name="groupId">Id of target group. Note that this method only support id of group, not for alias name</param>
         /// <param name="page">List friends will be paged, to get specified page, pass page value.</param>
         /// <returns>List of group member</returns>
-        private List<GroupMember> GetGroupMembers(string groupId, int page)
+        public List<GroupMember> GetGroupMembers(string groupId, int page)
         {
             var groupMembers = new List<GroupMember>();
 
@@ -261,7 +278,7 @@ namespace Mmosoft.Facebook.Sdk
             }
             return userGroups;
         }
-        private UserGroup GetUserGroupFrom(HtmlNode liNode)
+        public UserGroup GetUserGroupFrom(HtmlNode liNode)
         {
             UserGroup userGroup = null;
             var aTag = liNode.SelectSingleNode("./table/tbody/tr/td/a");            
@@ -646,7 +663,7 @@ namespace Mmosoft.Facebook.Sdk
         /// Type = 2 if you want to get your friend.
         /// </param>
         /// <returns>List of facebook user id</returns>                  
-        List<string> GetFriends(string firstFriendPageUrl)
+        public List<string> GetFriends(string firstFriendPageUrl)
         {
             // Declare list string to store user id
             var friends = new List<string>();
@@ -797,5 +814,253 @@ namespace Mmosoft.Facebook.Sdk
             string htmlContent = _http.DownloadContent(url);
             return HtmlHelper.BuildDom(htmlContent);
         }
+
+
+        public string get_fb_dtsg()
+        {
+            string htmlContent = _http.DownloadContent("https://mbasic.facebook.com");
+            HtmlNode htmlDocument = HtmlHelper.BuildDom(htmlContent);
+            HtmlNode fb_dtsg_node = htmlDocument.SelectSingleNode("//input[@type='hidden' and @name='fb_dtsg']");
+            return fb_dtsg_node.Attributes[2].Value;
+        }
+
+        public Boolean sendMessageToUser(string user_id, string message_content)
+        {
+            string url = "https://mbasic.facebook.com/messages/send/?icm=1&refid=12&ref=wizard";
+            CookieCollection cok = new CookieCollection();
+            cok.Add(cooki);
+            // postData = "fb_dtsg="+ get_fb_dtsg() +"&body=" + message_content + "%0D%0A&send=Send&tids=cid.c."+user_id+"&wwwupp=C3&ids%5B"+user_id+"%5D="+user_id+"&referrer=&ctype=&cver=legacy";
+
+
+            string postData = "fb_dtsg=" + get_fb_dtsg() + "&body="+ Uri.EscapeUriString(message_content) +"&send=Send&wwwupp=C2&ids%5B"+ user_id +"%5D="+user_id+"&referrer=&ctype=&cver=legacy";
+
+            //string postData = "fb_dtsg=" + get_fb_dtsg() + "&body=cc&send=Send&tids=cid.c." + user_id + "%3A" + get_my_user_id() + "&wwwupp=C2&ids%5B" + user_id + "%5D=" + user_id + "&referrer=&ctype=&cver=legacy";
+
+
+            //string postData = "fb_dtsg="+ get_fb_dtsg() + "&body="+ message_content +"&send=Send&tids=cid.c."+user_id+"%3A"+this.get_my_user_id() +"&wwwupp=C2e&ids%5B"+user_id+"%5D="+user_id+"&referrer=&ctype=&cver=legacy";
+
+            HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
+            request.CookieContainer = new CookieContainer();
+            request.CookieContainer.Add(cok);
+            request.UserAgent = "Mozilla/2.0 (Windows NT 6.1; WOW64;) Gecko/20100101 Firefox/11.0";
+            request.KeepAlive = false;
+            request.Timeout = 45000;
+            request.Method = WebRequestMethods.Http.Post;
+            request.AllowWriteStreamBuffering = true;
+            request.ProtocolVersion = HttpVersion.Version11;
+            request.ContentType = "application/x-www-form-urlencoded";
+            byte[] byteArray = Encoding.ASCII.GetBytes(postData);
+            request.ContentLength = byteArray.Length;
+            Stream newStream = request.GetRequestStream(); //open connection
+            newStream.Write(byteArray, 0, byteArray.Length); // Send the data.
+            newStream.Close();
+            HttpWebResponse getResponse = (HttpWebResponse)request.GetResponse();
+            return true;
+        }
+
+
+
+        public  CookieCollection GetAllCookies(CookieContainer cookieJar)
+        {
+            CookieCollection cookieCollection = new CookieCollection();
+
+            Hashtable table = (Hashtable)cookieJar.GetType().InvokeMember("m_domainTable",
+                                                                            BindingFlags.NonPublic |
+                                                                            BindingFlags.GetField |
+                                                                            BindingFlags.Instance,
+                                                                            null,
+                                                                            cookieJar,
+                                                                            new object[] { });
+
+            foreach (var tableKey in table.Keys)
+            {
+                String str_tableKey = (string)tableKey;
+
+                if (str_tableKey[0] == '.')
+                {
+                    str_tableKey = str_tableKey.Substring(1);
+                }
+
+                SortedList list = (SortedList)table[tableKey].GetType().InvokeMember("m_list",
+                                                                            BindingFlags.NonPublic |
+                                                                            BindingFlags.GetField |
+                                                                            BindingFlags.Instance,
+                                                                            null,
+                                                                            table[tableKey],
+                                                                            new object[] { });
+
+                foreach (var listKey in list.Keys)
+                {
+                    String url = "https://" + str_tableKey + (string)listKey;
+                    cookieCollection.Add(cookieJar.GetCookies(new Uri(url)));
+                }
+            }
+
+            return cookieCollection;
+        }
+
+
+
+
+        public string get_my_user_id()
+        {
+            
+            CookieCollection allcookies = GetAllCookies(_http.CookieContainer);
+            
+            foreach (var item in allcookies)
+            {
+                
+                if (item.ToString().Contains("c_user="))
+                {
+                    this.logedd_user_id = item.ToString();
+                    this.logedd_user_id = logedd_user_id.Replace("c_user=", "");
+
+                    
+                }
+                
+            }
+
+            return this.logedd_user_id;
+        }
+
+
+
+
+
+        public string get_birthday_key()
+        {
+            string htmlContent = _http.DownloadContent("https://web.facebook.com/events/");
+            HtmlNode htmlDocument;
+            htmlDocument = HtmlHelper.BuildDom(htmlContent);
+            //test
+            HtmlNodeCollection all_coments_nodes = htmlDocument.SelectNodes("//comment()");
+            HtmlNode birthday_garbage_node = all_coments_nodes[6];
+
+
+            string TempData = birthday_garbage_node.InnerHtml;
+
+            
+
+            TempData = Regex.Replace(TempData, "<!--", "");
+            TempData = Regex.Replace(TempData, "-->", "");
+
+            HtmlNode tempnode;
+            tempnode = HtmlHelper.BuildDom(TempData);
+            HtmlNode a_from_temp = htmlDocument.SelectSingleNode(" //div[@class='mts fsm fwn fcg'][1]/a[1]");
+           
+            string webcal_url = a_from_temp.Attributes[0].Value;
+            webcal_url = Regex.Replace(webcal_url, "webcal", "https");
+            webcal_url = Regex.Replace(webcal_url, "&amp;", "&");
+
+
+            string birth_key;
+           
+            birth_key = webcal_url.Replace("https://web.facebook.com/ical/u.php?uid=" + get_my_user_id() + "&key=", "");
+            return birth_key;
+
+
+        }
+
+
+        public void download_ics()
+        {
+
+           using(WebClient client = new WebClient())
+            {
+                string url = @"https://www.facebook.com/ical/b.php?uid=" + get_my_user_id() + "&key=" + get_birthday_key();
+                client.Headers.Add("user-agent", "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/66.0.3359.181 Safari/537.36");
+                client.DownloadFileCompleted += new System.ComponentModel.AsyncCompletedEventHandler(client_DownloadFileCompleted);
+                client.DownloadFileAsync(new Uri(url), @"birthday_cal.ics");
+
+            }
+
+
+            // Create an instance of WebClient
+            //WebClient client = new WebClient();
+
+
+            // Hookup DownloadFileCompleted Event
+
+            // Start the download and copy the file to c:\temp
+            
+        }
+
+        void client_DownloadFileCompleted(object sender, AsyncCompletedEventArgs e)
+        {
+            //MessageBox.Show("File downloaded");
+            ParseICS();
+            
+        }
+
+      
+        public void ParseICS()
+        {
+            string contents = File.ReadAllText(@"birthday_cal.ics");
+            var calendar = (VCalendar)CalendarObject.Parse(contents);
+            this.myfriends = new ArrayList();
+            foreach (var item in calendar.Children)
+            {
+                string name = item.Properties[1].Value;
+                string id = item.Properties[4].Value;
+                string date = item.Properties[0].Value;
+
+                 friend x = new friend(name, id , date);
+                myfriends.Add(x);
+                //Console.WriteLine("Name : " + item.Properties[1].Value);
+                //Console.WriteLine("ID : " + item.Properties[4].Value);
+                //Console.WriteLine("Date : " + item.Properties[0].Value);
+               
+            }
+
+            //MessageBox.Show("Parsing Done! See Console");
+            
+        }
+
+
+        public class friend
+        {
+            public string friend_name, friend_id, friend_date;
+
+            public friend(string name, string id, string date)
+            {
+                this.friend_name = get_name_from_string(name);
+                this.friend_id = convert_email_to_id(id);
+                this.friend_date = change_str_to_date(date);
+            }
+
+
+            public string change_str_to_date(string str)
+            {
+                //20190115
+                string last2 = str.Substring(str.Length - 2);
+                string last4 = str.Substring(str.Length - 4);
+
+                string day = last2;
+                string month = last4.Substring(0, 2);
+                string year = str.Substring(0, 4);
+
+                string result = day + "-" + month + "-" + year;
+                return result;
+
+            }
+
+
+            public string convert_email_to_id(string str)
+            {
+                //b100026175305515@facebook.com
+                string res = str.Replace("@facebook.com", "");
+                res = res.Replace("b", "");
+                return res;
+            }
+
+
+            public string get_name_from_string(string str)
+            {
+                //Mikey Maul's birthday
+                string res = str.Replace("'s birthday", "");
+                return res;
+            } 
+        }
+
     }
 }
